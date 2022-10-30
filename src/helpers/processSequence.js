@@ -14,38 +14,117 @@
  * Иногда промисы от API будут приходить в состояние rejected, (прямо как и API в реальной жизни)
  * Ответ будет приходить в поле {result}
  */
- import Api from '../tools/api';
 
- const api = new Api();
+import {
+  allPass,
+  andThen,
+  compose,
+  curry,
+  gt,
+  length,
+  lt,
+  modulo,
+  otherwise,
+  prop,
+  tap,
+  test,
+  replace,
+  __,
+  ifElse,
+  assoc,
+  converge,
+  call,
+  applySpec,
+  lensProp,
+  over,
+} from 'ramda';
+import Api from '../tools/api';
 
- /**
-  * Я – пример, удали меня
-  */
- const wait = time => new Promise(resolve => {
-     setTimeout(resolve, time);
- })
+const api = new Api();
 
- const processSequence = ({value, writeLog, handleSuccess, handleError}) => {
-     /**
-      * Я – пример, удали меня
-      */
-     writeLog(value);
+const getValue = prop('value');
+const getWriteLog = prop('writeLog');
+const getHandleSuccess = prop('handleSuccess');
+const getHandleError = prop('handleError');
 
-     api.get('https://api.tech/numbers/base', {from: 2, to: 10, number: '01011010101'}).then(({result}) => {
-         writeLog(result);
-     });
+const data = applySpec({
+  value: getValue,
+  writeLog: curry(getWriteLog),
+  handleError: curry(getHandleError),
+  handleSuccess: curry(getHandleSuccess),
+});
 
-     wait(2500).then(() => {
-         writeLog('SecondLog')
+const log = converge(call, [getWriteLog, getValue]);
 
-         return wait(1500);
-     }).then(() => {
-         writeLog('ThirdLog');
+const logValidateError = converge(call, [getHandleError, () => 'ValidateError']);
 
-         return wait(400);
-     }).then(() => {
-         handleSuccess('Done');
-     });
- }
+const xValue = lensProp('value');
 
- export default processSequence;
+const isTestAsFloatNumber = compose(test(/^([0-9]*[.])?[0-9]+$/), getValue);
+const isGreatThanTwo = lt(2);
+const isLengthGreatThanTwo = compose(isGreatThanTwo, length, getValue);
+const isLessThanTen = gt(10);
+const isLengthLessThanTen = compose(isLessThanTen, length, getValue);
+const isInputValid = allPass([isTestAsFloatNumber, isLengthGreatThanTwo, isLengthLessThanTen]);
+
+const parseToFloat = over(xValue, parseFloat);
+const roundValue = over(xValue, Math.round);
+
+const convertToNumberAndRound = compose(roundValue, parseToFloat);
+
+const curriedPow = curry(Math.pow);
+const getLength = over(xValue, length);
+const sq = over(xValue, curriedPow(__, 2));
+const remainderBy3 = over(xValue, modulo(__, 3));
+
+const curriedApiGet = curry(api.get);
+const fetchAnimalApi = curriedApiGet(__, {});
+const fetchNumberApi = curriedApiGet('https://api.tech/numbers/base');
+const getPayload = assoc('number', __, { from: 10, to: 2 });
+
+const getPromiseFromNumApi = (data) =>
+  compose(assoc('value', __, data), fetchNumberApi, getPayload, getValue)(data);
+
+const getUrlForAnimal = replace('{id}', __, 'https://animals.tech/{id}');
+
+const getPromiseAnimalApi = (data) =>
+  compose(assoc('value', __, data), fetchAnimalApi, getUrlForAnimal, getValue)(data);
+
+const successAnimal = (data) => compose(data.handleSuccess, prop('result'));
+
+const promiseAnimal = (data) =>
+  compose(otherwise(data.handleError), andThen(successAnimal(data)), getValue)(data);
+
+const parsePromiseAndFetchAnimalApi = (data) =>
+  compose(
+    promiseAnimal,
+    getPromiseAnimalApi,
+    tap(log),
+    remainderBy3,
+    tap(log),
+    sq,
+    tap(log),
+    getLength,
+    tap(log),
+    assoc('value', __, data),
+    prop('result'),
+  );
+
+const promiseNum = (data) =>
+  compose(
+    otherwise(data.handleError),
+    andThen(parsePromiseAndFetchAnimalApi(data)),
+    getValue,
+  )(data);
+
+const ifInputValidFetchApi = ifElse(
+  isInputValid,
+  compose(promiseNum, getPromiseFromNumApi, tap(log), convertToNumberAndRound),
+  logValidateError,
+);
+
+const app = compose(ifInputValidFetchApi, tap(log));
+
+const processSequence = app;
+
+export default processSequence;
