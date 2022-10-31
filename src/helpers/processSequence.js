@@ -56,7 +56,7 @@ const data = applySpec({
 
 const log = converge(call, [getWriteLog, getValue]);
 
-const logValidateError = converge(call, [getHandleError, () => 'ValidateError']);
+const logValidateError = converge(call, [getHandleError, () => 'ValidationError']);
 
 const xValue = lensProp('value');
 
